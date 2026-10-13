@@ -148,6 +148,182 @@ dpd.show(supportFragmentManager, "HijriDatePickerDialog")
 
 ---
 
+## ⚛️ React Native Integration (Android Bridge)
+
+You can easily bridge and use this native picker inside any React Native project:
+
+### 1. Android Dependencies
+In your React Native project:
+
+**`android/build.gradle`:**
+```groovy
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+
+**`android/app/build.gradle`:**
+```groovy
+dependencies {
+    implementation 'com.github.AbanoubAzer:HijriDatePicker:v1.0.0'
+}
+```
+
+---
+
+### 2. Create the Native Module (`HijriDatePickerModule.java`)
+Create `android/app/src/main/java/com/yourproject/HijriDatePickerModule.java`:
+
+```java
+package com.yourproject;
+
+import androidx.fragment.app.FragmentActivity;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.UiThreadUtil;
+import com.facebook.react.bridge.WritableMap;
+import com.github.msarhan.ummalqura.calendar.UmmalquraCalendar;
+import net.alhazmy13.hijridatepicker.date.hijri.HijriDatePickerDialog;
+
+public class HijriDatePickerModule extends ReactContextBaseJavaModule {
+
+    public HijriDatePickerModule(ReactApplicationContext reactContext) {
+        super(reactContext);
+    }
+
+    @Override
+    public String getName() {
+        return "HijriDatePicker";
+    }
+
+    @ReactMethod
+    public void open(ReadableMap options, Promise promise) {
+        UiThreadUtil.runOnUiThread(() -> {
+            try {
+                FragmentActivity activity = (FragmentActivity) getCurrentActivity();
+                if (activity == null) {
+                    promise.reject("ACTIVITY_DOES_NOT_EXIST", "Activity doesn't exist");
+                    return;
+                }
+
+                UmmalquraCalendar now = new UmmalquraCalendar();
+                int year = options != null && options.hasKey("year") ? options.getInt("year") : now.get(UmmalquraCalendar.YEAR);
+                int month = options != null && options.hasKey("month") ? options.getInt("month") : now.get(UmmalquraCalendar.MONTH);
+                int day = options != null && options.hasKey("day") ? options.getInt("day") : now.get(UmmalquraCalendar.DAY_OF_MONTH);
+
+                HijriDatePickerDialog dpd = HijriDatePickerDialog.newInstance(
+                        (view, selectedYear, monthOfYear, dayOfMonth) -> {
+                            WritableMap result = Arguments.createMap();
+                            result.putString("action", "dateSetAction");
+                            result.putInt("year", selectedYear);
+                            result.putInt("month", monthOfYear + 1); // 1-indexed for JS
+                            result.putInt("day", dayOfMonth);
+                            promise.resolve(result);
+                        },
+                        year,
+                        month,
+                        day
+                );
+
+                if (options != null && options.hasKey("minYear")) dpd.setMinYear(options.getInt("minYear"));
+                if (options != null && options.hasKey("maxYear")) dpd.setMaxYear(options.getInt("maxYear"));
+
+                dpd.setOnCancelListener(dialog -> {
+                    WritableMap result = Arguments.createMap();
+                    result.putString("action", "dismissedAction");
+                    promise.resolve(result);
+                });
+
+                dpd.show(activity.getSupportFragmentManager(), "HijriDatePickerDialog");
+            } catch (Exception e) {
+                promise.reject("E_PICKER_ERROR", e.getMessage(), e);
+            }
+        });
+    }
+}
+```
+
+---
+
+### 3. Create the Package (`HijriDatePickerPackage.java`)
+Create `android/app/src/main/java/com/yourproject/HijriDatePickerPackage.java`:
+
+```java
+package com.yourproject;
+
+import com.facebook.react.ReactPackage;
+import com.facebook.react.bridge.NativeModule;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.uimanager.ViewManager;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class HijriDatePickerPackage implements ReactPackage {
+    @Override
+    public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
+        List<NativeModule> modules = new ArrayList<>();
+        modules.add(new HijriDatePickerModule(reactContext));
+        return modules;
+    }
+
+    @Override
+    public List<ViewManager> createViewManagers(ReactApplicationContext reactContext) {
+        return Collections.emptyList();
+    }
+}
+```
+
+Add `new HijriDatePickerPackage()` to the `getPackages()` list in your `MainApplication.java` (or `MainApplication.kt`).
+
+---
+
+### 4. JavaScript / TypeScript Usage
+
+```javascript
+import { NativeModules, Platform } from 'react-native';
+
+const { HijriDatePicker } = NativeModules;
+
+export const showHijriDatePicker = async (options = {}) => {
+  if (Platform.OS !== 'android') {
+    console.warn('HijriDatePicker is currently supported on Android.');
+    return;
+  }
+
+  try {
+    const result = await HijriDatePicker.open({
+      year: 1448,     // optional default year
+      month: 3,       // optional default month (0-11)
+      day: 30,        // optional default day
+      minYear: 1400,  // optional
+      maxYear: 1500,  // optional
+      ...options,
+    });
+
+    if (result.action === 'dateSetAction') {
+      console.log('Selected Hijri Date:', `${result.day}/${result.month}/${result.year}`);
+      return result; // { year: 1448, month: 4, day: 30 }
+    } else {
+      console.log('Picker was cancelled');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error opening Hijri date picker:', error);
+  }
+};
+```
+
+---
+
 ## 🛠️ Testing
 
 Comprehensive test cases have been added to verify that month and year transitions from 30-day months into 29-day months execute cleanly without `DateTimeException`.
